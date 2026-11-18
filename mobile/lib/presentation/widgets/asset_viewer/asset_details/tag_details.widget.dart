@@ -65,9 +65,13 @@ class _TagDetailsState extends ConsumerState<TagDetails> {
     final asset = widget.asset;
     final isTagsEnabled = ref.watch(Store.userMetadata.preferences()).valueOrNull?.tagsEnabled ?? false;
     final user = ref.watch(currentUserProvider);
-    if (asset is! RemoteAsset || !isTagsEnabled || asset.ownerId != user?.id) {
+    // [CUSTOM] 上游条件是 `asset.ownerId != user?.id` 就直接不渲染，导致共享给我们的
+    // 资产看不到任何标签。这里放宽为「RemoteAsset + 标签功能开启」即显示；
+    // 增删能力仍由 isOwner 控制（TagAction/UntagAction 内部亦已按所有权过滤）。
+    if (asset is! RemoteAsset || !isTagsEnabled) {
       return const SizedBox.shrink();
     }
+    final isOwner = asset.ownerId == user?.id;
 
     final tags = ref.watch(Store.tags.forAsset(asset.id)).valueOrNull ?? const <Tag>[];
     final tagAction = const TagAction(source: .viewer).create(context, ref);
@@ -101,10 +105,13 @@ class _TagDetailsState extends ConsumerState<TagDetails> {
               shape: const StadiumBorder(),
               side: BorderSide(color: tagBorder),
               deleteIcon: Icon(Icons.close, size: 16, color: tagText),
-              onDeleted: switch (UntagAction(source: .viewer, tagId: tag.id).create(context, ref)) {
-                final action? => () async => await action.onAction(),
-                null => null,
-              },
+              // [CUSTOM] 非 owner 只读：不显示删除按钮
+              onDeleted: !isOwner
+                  ? null
+                  : switch (UntagAction(source: .viewer, tagId: tag.id).create(context, ref)) {
+                      final action? => () async => await action.onAction(),
+                      null => null,
+                    },
               deleteButtonTooltipMessage: context.t.remove_tag,
             ),
         ],
@@ -159,7 +166,7 @@ class _TagDetailsState extends ConsumerState<TagDetails> {
                   backgroundColor: Colors.transparent,
                   onPressed: () => setState(() => _isExpanded = !_isExpanded),
                 ),
-              if (tagAction != null)
+              if (tagAction != null && isOwner)
                 ActionChip(
                   avatar: Icon(Icons.new_label_outlined, size: 18, color: context.primaryColor),
                   label: Text(context.t.add_tag),
