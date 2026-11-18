@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { AuthDto } from 'src/dtos/auth.dto';
-import { MapMarkerDto, MapMarkerResponseDto, MapReverseGeocodeDto } from 'src/dtos/map.dto';
-import { BaseService } from 'src/services/base.service';
-import { getMyPartnerIds } from 'src/utils/asset.util';
+import { AuthDto } from 'src/dtos/auth.dto.js';
+import { MapMarkerDto, MapMarkerResponseDto, MapReverseGeocodeDto } from 'src/dtos/map.dto.js';
+import { BaseService } from 'src/services/base.service.js';
+import { getMyPartnerIds } from 'src/utils/asset.util.js';
 
 @Injectable()
 export class MapService extends BaseService {
@@ -20,12 +20,8 @@ export class MapService extends BaseService {
 
   async reverseGeocode(dto: MapReverseGeocodeDto) {
     const { lat: latitude, lon: longitude } = dto;
-    const { reverseGeocoding } = await this.getConfig({ withCache: true });
     // eventually this should probably return an array of results
-    const result = await this.mapRepository.reverseGeocode(
-      { latitude, longitude },
-      { amapKey: reverseGeocoding.amapKey },
-    );
+    const result = await this.mapRepository.reverseGeocode({ latitude, longitude });
     return result ? [result] : [];
   }
 }

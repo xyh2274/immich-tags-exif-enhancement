@@ -1,59 +1,56 @@
 import { Injectable } from '@nestjs/common';
-import { getName } from 'i18n-iso-countries';
-import { Expression, Insertable, Kysely, NotNull, sql, SqlBool } from 'kysely';
+import { Expression, Insertable, Kysely, NotNull, SqlBool, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { createReadStream, existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import readLine from 'node:readline';
-import { citiesFile, reverseGeocodeMaxDistance } from 'src/constants';
-import { DummyValue, GenerateSql } from 'src/decorators';
-import { AssetVisibility, SystemMetadataKey } from 'src/enum';
-import { ConfigRepository } from 'src/repositories/config.repository';
-import { LoggingRepository } from 'src/repositories/logging.repository';
-import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository';
-import { DB } from 'src/schema';
-import { GeodataPlacesTable } from 'src/schema/tables/geodata-places.table';
-import { NaturalEarthCountriesTable } from 'src/schema/tables/natural-earth-countries.table';
+import { citiesFile, reverseGeocodeMaxDistance } from 'src/constants.js';
+import { DummyValue, GenerateSql } from 'src/decorators.js';
+import { AssetVisibility, SystemMetadataKey } from 'src/enum.js';
+import { ConfigRepository } from 'src/repositories/config.repository.js';
+import { LoggingRepository } from 'src/repositories/logging.repository.js';
+import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
+import { DB } from 'src/schema/index.js';
+import { GeodataPlacesTable } from 'src/schema/tables/geodata-places.table.js';
+import { NaturalEarthCountriesTable } from 'src/schema/tables/natural-earth-countries.table.js';
 
-/**
- * WGS84 to GCJ-02 coordinate conversion (for Amap API).
- * Simplified inline version to avoid extra dependency.
- */
-function wgs84ToGcj02(lng: number, lat: number): [number, number] {
-  const PI = Math.PI;
-  const A = 6378245.0;
-  const EE = 0.00669342162296594323;
-  function _outOfChina(l: number, la: number) { return l < 72.004 || l > 137.8347 || la < 0.8293 || la > 55.8271; }
-  if (_outOfChina(lng, lat)) return [lng, lat];
-  function _tlat(x: number, y: number) {
-    let r = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x));
-    r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;
-    r += (20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3;
-    r += (160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3;
-    return r;
-  }
-  function _tlng(x: number, y: number) {
-    let r = 300 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x));
-    r += (20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;
-    r += (20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3;
-    r += (150*Math.sin(x/12*PI)+300*Math.sin(x/15*PI))*2/3;
-    return r;
-  }
-  let dl = _tlat(lng - 105, lat - 35), dn = _tlng(lng - 105, lat - 35);
-  const rl = lat/180*PI, m = Math.sin(rl), mm = 1 - EE*m*m, sm = Math.sqrt(mm);
-  dl = dl*180/((A*(1-EE))/(mm*sm)*PI);
-  dn = dn*180/((A/sm)*Math.cos(rl)*PI);
-  return [lng + dn, lat + dl];
+export interface MapMarkerSearchOptions {
+  isArchived?: boolean;
+  isFavorite?: boolean;
+  fileCreatedBefore?: Date;
+  fileCreatedAfter?: Date;
+}
+
+export interface GeoPoint {
+  latitude: number;
+  longitude: number;
+}
+
+export interface ReverseGeocodeResult {
+  country: string | null;
+  state: string | null;
+  city: string | null;
+}
+
+interface MapDB extends DB {
+  geodata_places_tmp: GeodataPlacesTable;
+  naturalearth_countries_tmp: NaturalEarthCountriesTable;
+}
+
+interface CountryNames {
+  byAlpha2: Map<string, string>;
+  byAlpha3: Map<string, string>;
 }
 
 /**
- * 中国省份名称映射（自定义功能）。
+ * [CUSTOM] 中国省份名称映射。
  *
  * 键有两种形式：
  *   - `CN.<admin1Code>`：GeoNames 的行政编码（如 "CN.19" -> 辽宁）
  *   - 英文省名：部分数据源直接给英文名（如 "Beijing" -> 北京）
  *
- * 用于把 reverseGeocode 得到的 admin1Name/admin1Code 归一到中文省名。
+ * 用途：reverseGeocode 拿到的 admin1Name 常是拼音或英文，直接展示对中文用户不友好。
+ * 这里统一归一到中文省名。未命中时回退原始 admin1Name。
  */
 const CN_PROVINCE_MAP: Record<string, string> = {
   'CN.01': '安徽',
@@ -100,31 +97,10 @@ const CN_PROVINCE_MAP: Record<string, string> = {
   Chongqing: '重庆',
 };
 
-export interface MapMarkerSearchOptions {
-  isArchived?: boolean;
-  isFavorite?: boolean;
-  fileCreatedBefore?: Date;
-  fileCreatedAfter?: Date;
-}
-
-export interface GeoPoint {
-  latitude: number;
-  longitude: number;
-}
-
-export interface ReverseGeocodeResult {
-  country: string | null;
-  state: string | null;
-  city: string | null;
-}
-
-interface MapDB extends DB {
-  geodata_places_tmp: GeodataPlacesTable;
-  naturalearth_countries_tmp: NaturalEarthCountriesTable;
-}
-
 @Injectable()
 export class MapRepository {
+  private countryNames?: Promise<CountryNames>;
+
   constructor(
     private configRepository: ConfigRepository,
     private metadataRepository: SystemMetadataRepository,
@@ -230,17 +206,10 @@ export class MapRepository {
       .$narrowType<{ lat: NotNull; lon: NotNull }>();
   }
 
-  async reverseGeocode(point: GeoPoint, config?: { amapKey?: string }): Promise<ReverseGeocodeResult> {
+  async reverseGeocode(point: GeoPoint): Promise<ReverseGeocodeResult> {
     this.logger.debug(`Request: ${point.latitude},${point.longitude}`);
 
-    // Try Amap API first if configured
-    if (config?.amapKey) {
-      const amapResult = await this.reverseGeocodeAmap(point, config.amapKey);
-      if (amapResult) {
-        return amapResult;
-      }
-      this.logger.warn('Amap reverse geocoding failed, falling back to local data');
-    }
+    const countryNames = await this.loadCountryNames();
 
     const response = await this.db
       .selectFrom('geodata_places')
@@ -259,10 +228,15 @@ export class MapRepository {
     if (response) {
       this.logger.verboseFn(() => `Raw: ${JSON.stringify(response, null, 2)}`);
 
+      // [CUSTOM] 额外解构 admin1Code，用于中国省份归一键 `CN.<code>` 的回退查找。
       const { countryCode, name: city, admin1Name, admin1Code } = response;
-      const country = countryCode === 'CN' ? '中国' : (getName(countryCode, 'en') ?? null);
-      const state = countryCode === 'CN' && admin1Name ?
-        (CN_PROVINCE_MAP[admin1Name] || CN_PROVINCE_MAP[`${countryCode}.${admin1Code}`] || admin1Name) : admin1Name;
+      // [CUSTOM] 中国统一显示为中文名（v3.4.1 的 countryNames 来自 GeoNames，中文名不稳定）。
+      const country = countryCode === 'CN' ? '中国' : (countryNames.byAlpha2.get(countryCode) ?? null);
+      // [CUSTOM] 把 admin1Name / admin1Code 归一到中文省名，否则界面会显示拼音或英文州名。
+      const state =
+        countryCode === 'CN' && admin1Name
+          ? (CN_PROVINCE_MAP[admin1Name] || CN_PROVINCE_MAP[`${countryCode}.${admin1Code}`] || admin1Name)
+          : admin1Name;
 
       return { country, state, city };
     }
@@ -289,38 +263,57 @@ export class MapRepository {
     this.logger.verboseFn(() => `Raw: ${JSON.stringify(ne_response, ['id', 'admin', 'admin_a3', 'type'], 2)}`);
 
     const { admin_a3 } = ne_response;
-    const country = getName(admin_a3, 'en') ?? null;
+    const country = countryNames.byAlpha3.get(admin_a3) ?? null;
     const state = null;
     const city = null;
 
     return { country, state, city };
   }
 
-  private async reverseGeocodeAmap(point: GeoPoint, key: string): Promise<ReverseGeocodeResult | null> {
+  // init() skips the geodata import when it is up to date, so load the names on demand
+  private async loadCountryNames(): Promise<CountryNames> {
+    this.countryNames ??= this.readCountryNames();
     try {
-      // Convert WGS84 to GCJ-02 for Amap API
-      const [lng, lat] = wgs84ToGcj02(point.longitude, point.latitude);
-      const url = `https://restapi.amap.com/v3/geocode/regeo?key=${key}&location=${lng},${lat}&output=json`;
-      const response = await fetch(url);
-      const data = await response.json() as any;
-
-      if (data.status !== '1' || !data.regeocode) {
-        this.logger.warn(`Amap API error: ${JSON.stringify(data)}`);
-        return null;
-      }
-
-      const comp = data.regeocode.addressComponent;
-      this.logger.log(`Amap result: ${comp.province} ${comp.city} ${comp.district}`);
-
-      return {
-        country: comp.country || '中国',
-        state: comp.province || null,
-        city: comp.district || comp.city || comp.township || null,
-      };
+      return await this.countryNames;
     } catch (error) {
-      this.logger.warn(`Amap API request failed: ${error}`);
-      return null;
+      this.countryNames = undefined;
+      throw error;
     }
+  }
+
+  private async readCountryNames(): Promise<CountryNames> {
+    const byAlpha2 = new Map<string, string>();
+    const byAlpha3 = new Map<string, string>();
+
+    const { resourcePaths } = this.configRepository.getEnv();
+    const filePath = resourcePaths.geodata.countryInfo;
+    if (!existsSync(filePath)) {
+      throw new Error(`Geodata file ${filePath} not found`);
+    }
+
+    const lineReader = readLine.createInterface({ input: createReadStream(filePath) });
+    for await (const line of lineReader) {
+      if (line.startsWith('#')) {
+        continue;
+      }
+      // Columns: ISO alpha-2, ISO alpha-3, ISO numeric, fips, Country, ...
+      const fields = line.split('\t', 5);
+      const alpha2 = fields[0];
+      const alpha3 = fields[1];
+      const name = fields[4]?.trim();
+      if (!name) {
+        continue;
+      }
+      if (alpha2) {
+        byAlpha2.set(alpha2, name);
+      }
+      if (alpha3) {
+        byAlpha3.set(alpha3, name);
+      }
+    }
+
+    this.logger.log(`Loaded ${byAlpha2.size} country names from ${filePath}`);
+    return { byAlpha2, byAlpha3 };
   }
 
   private async importNaturalEarthCountries() {
@@ -422,16 +415,8 @@ export class MapRepository {
         admin1Name: admin1Map.get(`${lineSplit[8]}.${lineSplit[10]}`) ?? null,
         admin2Name: admin2Map.get(`${lineSplit[8]}.${lineSplit[10]}.${lineSplit[11]}`) ?? null,
       };
-
-      // For Chinese locations, prefer Chinese name from alternateNames
-      if (geoData.countryCode === 'CN' && geoData.alternateNames) {
-        const altNames = geoData.alternateNames.split(',');
-        const chineseName = altNames.find((n) => /[\u4e00-\u9fff]/.test(n));
-        if (chineseName) {
-          geoData.name = chineseName;
-        }
-      }
       bufferGeodata.push(geoData);
+      // eslint-disable-next-line unicorn/prefer-continue
       if (bufferGeodata.length >= 5000) {
         const curLength = bufferGeodata.length;
         futures.push(

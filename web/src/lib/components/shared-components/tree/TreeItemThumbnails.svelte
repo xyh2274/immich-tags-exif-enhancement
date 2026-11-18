@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { TreeNode } from '$lib/utils/tree-utils';
+  import type { TreeNode } from '#lib/utils/tree-utils.ts';
   import { Icon } from '@immich/ui';
 
   interface Props {
@@ -27,9 +27,6 @@
         <p class="w-full overflow-clip text-sm text-nowrap text-ellipsis whitespace-pre-wrap dark:text-gray-200">
           {item.value}
         </p>
-        {#if item.assetCount !== undefined}
-          <span class="text-xs text-gray-500 tabular-nums dark:text-gray-400">{item.assetCount} assets</span>
-        {/if}
       </button>
     {/each}
   </div>

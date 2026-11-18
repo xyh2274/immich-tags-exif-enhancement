@@ -1,23 +1,24 @@
 import 'dart:async';
 
 import 'package:auto_route/auto_route.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/log.model.dart';
 import 'package:immich_mobile/domain/services/log.service.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
+import 'package:immich_mobile/extensions/datetime_extensions.dart';
 import 'package:immich_mobile/extensions/theme_extensions.dart';
+import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/services/immich_logger.service.dart';
+import 'package:intl/intl.dart';
 
 @RoutePage()
-class AppLogPage extends HookConsumerWidget {
+class AppLogPage extends HookWidget {
   const AppLogPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final immichLogger = LogService.I;
     final shouldReload = useState(false);
     final logMessages = useFuture(useMemoized(() => immichLogger.getMessages(), [shouldReload.value]));
@@ -51,7 +52,7 @@ class AppLogPage extends HookConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('logs'.tr(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16.0)),
+        title: Text(context.t.logs, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16.0)),
         scrolledUnderElevation: 1,
         elevation: 2,
         actions: [
@@ -105,7 +106,7 @@ class AppLogPage extends HookConsumerWidget {
               style: TextStyle(fontSize: 14.0, color: context.colorScheme.onSurface, fontFamily: "GoogleSansCode"),
             ),
             subtitle: Text(
-              "at ${DateFormat("HH:mm:ss.SSS").format(logMessage.createdAt)} in ${logMessage.logger}",
+              "at ${DateFormat("HH:mm:ss.SSS", resolvedDateTimeLocale()).format(logMessage.createdAt)} in ${logMessage.logger}",
               style: TextStyle(fontSize: 12.0, color: context.colorScheme.onSurfaceSecondary),
             ),
             leading: buildLeadingIcon(logMessage.level),

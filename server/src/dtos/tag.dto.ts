@@ -1,20 +1,28 @@
 import { createZodDto } from 'nestjs-zod';
-import { Tag } from 'src/database';
-import { MaybeDehydrated } from 'src/types';
-import { asDateTimeString } from 'src/utils/date';
-import { hexColor } from 'src/validation';
 import z from 'zod';
+import { Tag } from 'src/database.js';
+import type { MaybeDehydrated } from 'src/types.js';
+import { asDateTimeString } from 'src/utils/date.js';
+import { hexColor } from 'src/validation.js';
 
 const TagCreateSchema = z
   .object({
-    name: z.string().describe('Tag name'),
+    name: z
+      .string()
+      .regex(/^[^/]*$/, `Tag name cannot contain slash characters ("/")`)
+      .describe('Tag name'),
     parentId: z.uuidv4().nullish().describe('Parent tag ID'),
     color: hexColor.nullable().optional().describe('Tag color (hex)'),
   })
   .meta({ id: 'TagCreateDto' });
 
-const TagUpdateSchema = z
+export const TagUpdateSchema = z
   .object({
+    name: z
+      .string()
+      .regex(/^[^/]*$/, `Tag name cannot contain slash characters ("/")`)
+      .optional()
+      .describe('Tag name'),
     color: hexColor.nullable().optional().describe('Tag color (hex)'),
   })
   .meta({ id: 'TagUpdateDto' });
@@ -44,7 +52,6 @@ export const TagResponseSchema = z
     parentId: z.string().optional().describe('Parent tag ID'),
     name: z.string().describe('Tag name'),
     value: z.string().describe('Tag value (full path)'),
-    assetCount: z.int().optional().describe('Number of assets tagged with this tag'),
     // TODO: use `isoDatetimeToDate` when using `ZodSerializerDto` on the controllers.
     createdAt: z.string().meta({ format: 'date-time' }).describe('Creation date'),
     // TODO: use `isoDatetimeToDate` when using `ZodSerializerDto` on the controllers.
@@ -66,7 +73,6 @@ export function mapTag(entity: MaybeDehydrated<Tag>): TagResponseDto {
     parentId: entity.parentId ?? undefined,
     name: entity.value.split('/').at(-1) as string,
     value: entity.value,
-    assetCount: entity.assetCount,
     createdAt: asDateTimeString(entity.createdAt),
     updatedAt: asDateTimeString(entity.updatedAt),
     color: entity.color ?? undefined,

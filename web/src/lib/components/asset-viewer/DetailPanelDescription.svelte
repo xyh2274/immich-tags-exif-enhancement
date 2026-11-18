@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { shortcut } from '$lib/actions/shortcut';
-  import { handleError } from '$lib/utils/handle-error';
+  import { shortcut } from '#lib/actions/shortcut.ts';
+  import { handleError } from '#lib/utils/handle-error.ts';
   import { updateAsset, type AssetResponseDto } from '@immich/sdk';
   import { Textarea, toastManager } from '@immich/ui';
   import { t } from 'svelte-i18n';
@@ -14,8 +14,6 @@
   let { asset, isOwner }: Props = $props();
 
   let description = $derived(asset.exifInfo?.description ?? '');
-  // pixiv 结构化 description 由 DetailPanelPixiv 单独解析显示，这里跳过避免重复
-  let isPixiv = $derived(description.includes(' || '));
 
   const handleFocusOut = async () => {
     const currentDescription = asset.exifInfo?.description ?? '';
@@ -31,13 +29,11 @@
   };
 </script>
 
-{#if isPixiv}
-  <!-- pixiv 结构化描述由 DetailPanelPixiv 单独渲染，此处跳过避免重复 -->
-{:else if isOwner}
+{#if isOwner}
   <section class="mt-10 px-4">
     <Textarea
       bind:value={description}
-      class="max-h-40 resize-none border-b border-gray-500 bg-transparent pl-0 ring-0 outline-none focus:border-b-2 focus:border-immich-primary focus:ring-0 dark:bg-transparent dark:focus:border-immich-dark-primary"
+      class="max-h-40 resize-none border-b border-gray-500 bg-transparent ps-0 ring-0 outline-none focus:border-b-2 focus:border-immich-primary focus:ring-0 dark:bg-transparent dark:focus:border-immich-dark-primary"
       rows={1}
       grow
       shape="rectangle"
