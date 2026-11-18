@@ -46,6 +46,60 @@ function wgs84ToGcj02(lng: number, lat: number): [number, number] {
   return [lng + dn, lat + dl];
 }
 
+/**
+ * 中国省份名称映射（自定义功能）。
+ *
+ * 键有两种形式：
+ *   - `CN.<admin1Code>`：GeoNames 的行政编码（如 "CN.19" -> 辽宁）
+ *   - 英文省名：部分数据源直接给英文名（如 "Beijing" -> 北京）
+ *
+ * 用于把 reverseGeocode 得到的 admin1Name/admin1Code 归一到中文省名。
+ */
+const CN_PROVINCE_MAP: Record<string, string> = {
+  'CN.01': '安徽',
+  'CN.02': '浙江',
+  'CN.03': '江西',
+  'CN.04': '江苏',
+  'CN.05': '吉林',
+  'CN.06': '青海',
+  'CN.07': '福建',
+  'CN.08': '黑龙江',
+  'CN.09': '河南',
+  'CN.10': '河北',
+  'CN.11': '湖南',
+  'CN.12': '湖北',
+  'CN.13': '新疆',
+  'CN.14': '西藏',
+  'CN.15': '甘肃',
+  'CN.16': '广西',
+  'CN.17': '贵州',
+  'CN.18': '辽宁',
+  'CN.19': '宁夏',
+  'CN.20': '内蒙古',
+  'CN.21': '宁夏',
+  'CN.22': '陕西',
+  'CN.23': '山东',
+  'CN.24': '山西',
+  'CN.25': '四川',
+  'CN.26': '云南',
+  'CN.27': '广东',
+  'CN.28': '海南',
+  'CN.29': '贵州',
+  'CN.30': '河北',
+  'CN.31': '西藏',
+  'CN.32': '重庆',
+  'CN.33': '重庆',
+  'CN.34': '北京',
+  'CN.35': '上海',
+  'CN.36': '天津',
+  'CN.37': '江苏',
+  'CN.38': '浙江',
+  Beijing: '北京',
+  Shanghai: '上海',
+  Tianjin: '天津',
+  Chongqing: '重庆',
+};
+
 export interface MapMarkerSearchOptions {
   isArchived?: boolean;
   isFavorite?: boolean;
@@ -205,7 +259,7 @@ export class MapRepository {
     if (response) {
       this.logger.verboseFn(() => `Raw: ${JSON.stringify(response, null, 2)}`);
 
-      const { countryCode, name: city, admin1Name } = response;
+      const { countryCode, name: city, admin1Name, admin1Code } = response;
       const country = countryCode === 'CN' ? '中国' : (getName(countryCode, 'en') ?? null);
       const state = countryCode === 'CN' && admin1Name ?
         (CN_PROVINCE_MAP[admin1Name] || CN_PROVINCE_MAP[`${countryCode}.${admin1Code}`] || admin1Name) : admin1Name;
