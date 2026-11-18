@@ -117,6 +117,18 @@ dev_dependencies:
 # Pin bonsoir to 5.x until cast releases a version compatible with bonsoir 6.x.
 dependency_overrides:
   bonsoir: ^5.1.11
+  # [CUSTOM] 锁回 v3.4.1 锁定文件里的版本。上游用宽松约束，在 Flutter 3.47.2
+  # 下 `pub get` 会升到 9.6.6，其 android/build.gradle 硬编码要求 kotlin
+  # serialization 2.3.20，与项目 2.1.0 冲突（见 android/settings.gradle 的 TODO）。
+  background_downloader: 9.5.6
+  # [CUSTOM] 2.6.x 起要求 objective_c ^9.6.2，而下面 objective_c 被 override
+  # 到 9.4.1（为绕开 dart-lang/native#3458），版本无法满足。
+  shared_preferences_foundation: 2.5.6
+  # [CUSTOM] drift 与 drift_dev 必须严格同版本：pub 解析出的 2.34.4 + 2.34.0
+  # 组合会让 `drift_dev make-migrations` 因 GeneratedDatabase API 变更而崩溃
+  # （allSchemaEntities 不存在）。锁到上游 v3.4.1 的 2.34.0。
+  drift: 2.34.0
+  drift_dev: 2.34.0
   objective_c:
     git:
       url: https://github.com/mertalev/native
@@ -161,3 +173,19 @@ flutter_launcher_icons:
 analyzer:
   exclude:
     - generated/**
+
+# [CUSTOM] sqlite3 原生库的获取方式（国内网络适配）。
+#
+# Windows：drift_dev 等开发工具需要本地 SQLite，走系统库（winsqlite3.dll），
+#   避免从 GitHub Releases 下载超时 —— 否则 `drift_dev schema steps` 无法运行。
+# Android：系统只有 libsqlite.so 且不保证存在，仍需下载预编译 .so；
+#   用 url_pattern 把下载重定向到 GitHub 加速镜像（实测 ghfast.top 可用），
+#   否则 `flutter build apk` 会在 build_hooks 阶段超时失败。
+hooks:
+  user_defines:
+    sqlite3:
+      source:
+        windows: system
+        default: sqlite3
+      name_windows: winsqlite3
+      url_pattern: 'https://ghfast.top/https://github.com/simolus3/sqlite3.dart/releases/download/$RELEASE_TAG/$FILENAME'

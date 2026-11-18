@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -93,21 +95,21 @@ class PixivDetails extends ConsumerWidget {
       ..setFilter(
         SearchFilter(
           people: {},
-          location: SearchLocationFilter(),
-          camera: SearchCameraFilter(),
-          date: SearchDateFilter(),
-          display: SearchDisplayFilters(
+          location: const SearchLocationFilter(),
+          camera: const SearchCameraFilter(),
+          date: const SearchDateFilter(),
+          display: const SearchDisplayFilters(
             isNotInAlbum: false,
             isArchive: false,
             isFavorite: false,
           ),
-          rating: SearchRatingFilter(),
+          rating: const SearchRatingFilter(),
           mediaType: AssetType.other,
           description: query,
         ),
       );
     // [CUSTOM] v3.1.0 时代叫 DriftSearchRoute，v3.4.1 已收敛为 SearchRoute。
-    context.navigateTo(const SearchRoute());
+    unawaited(context.navigateTo(const SearchRoute()));
   }
 }
 
